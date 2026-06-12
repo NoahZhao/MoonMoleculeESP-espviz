@@ -1,0 +1,55 @@
+\documentclass[10pt,a4paper]{ctexart}
+\usepackage[margin=1.45cm]{geometry}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{2pt}
+\setlist[itemize]{nosep,leftmargin=1.4em}
+\linespread{0.95}
+
+\begin{document}
+
+\begin{center}
+{\large\bfseries 项目书：基于 MoonBit 的分子静电势可视化与验证工具}
+\end{center}
+
+\textbf{1. 项目名称：}
+基于 MoonBit 的分子静电势（MESP）可视化与验证工具。
+
+\textbf{2. 项目简介：}
+本项目使用 MoonBit 实现轻量级分子静电势计算与可视化内核，支持二维切片、SVG/CSV/PPM 输出和交互式 3D 展示。项目区分两类模型：一是基于原子部分电荷的快速点电荷近似
+\[
+\Phi(\mathbf r)=k\sum_i\frac{q_i}{|\mathbf r-\mathbf R_i|},
+\]
+用于教学、力场电荷和 ESP/RESP 拟合电荷检查；二是基于核电荷与外部电子密度网格的严格 MESP 后处理
+\[
+V(\mathbf r)=k\left[\sum_A\frac{Z_A}{|\mathbf r-\mathbf R_A|}
+-\int\frac{\rho(\mathbf r')}{|\mathbf r-\mathbf r'|}d\mathbf r'\right],
+\]
+符合量子化学中分子静电势的公认定义。项目本身不求解 HF/DFT 波函数，但可接收外部电子密度数据进行积分和可视化。
+
+\textbf{3. 项目方向与适用场景：}
+项目方向为科学计算可视化、计算化学后处理和 MoonBit 数值计算应用。适用于计算化学教学、小分子电荷模型检查、量子化学电子密度后处理、分子表面静电势分析、反应位点和分子间相互作用的定性辅助判断。
+
+\textbf{4. 拟实现的核心功能：}
+\begin{itemize}
+  \item 分子坐标、部分电荷、核电荷和电子密度网格数据结构。
+  \item 点电荷库仑势、核电荷项、电子密度积分项和二维平面 MESP 计算。
+  \item 分子表面支持电子密度等值面定义，默认参考 $\rho=0.001$ a.u.，并保留 $0.002$ a.u. 选项；范德华表面仅用于快速交互演示。
+  \item CSV、PPM、SVG 与 3D 前端可视化；颜色映射以 0 为中心，负电势为红色，正电势为蓝色，中性附近为白色。
+  \item 固定对称色标，避免自动缩放导致不同分子或不同表面的颜色对比失真。
+\end{itemize}
+
+\textbf{5. 原创性说明：}
+本项目为原创项目。MoonBit 核心数据结构、计算 API、可视化导出、测试和文档均独立实现。项目参考公开量子化学理论和常用 MESP 分析流程，但不复制第三方源码。
+
+\textbf{6. 是否为移植项目及参考项目：}
+本项目不是移植项目。开发中仅参考相关开源项目的问题设定和功能边界，包括 PyPointChargePotentialSolver（GPL v3）、multipoles（MIT）、resp（BSD-3-Clause）和 esp-surface-generator（Apache-2.0），未移植或复用其代码。
+
+\textbf{静电势计算准确性与验证方案：}
+点电荷模式对给定 $q_i$ 精确实现经典库仑势，单位为 eV/e，适合验证电荷模型，但不能宣称为严格量子化学 MESP，因为其不能描述连续电子云、孤对电子、$\pi$ 体系和 $\sigma$-hole 等各向异性特征。严格 MESP 模式使用核电荷 $Z_A$ 与电子密度 $\rho$ 的公认公式，准确性取决于上游电子密度质量、网格分辨率、积分区域和单位一致性。
+
+验证将采用六类方法：解析解测试（单点电荷、正负电荷抵消、单核电荷）；单位测试（Bohr--Angstrom 与电子密度 a.u. 换算）；电子数积分测试 $N_e=\sum_g\rho_g\Delta V_g$；网格加密收敛测试；与 Gaussian、ORCA、Psi4、CP2K 或 Multiwfn 的固定点、切片和表面 MESP 结果对比；颜色映射一致性测试，确保 0 电势为白色、负值为红色、正值为蓝色，且图例色标与实际数据一致。严格表面 MESP 必须基于 $\rho=0.001$ a.u. 或 $0.002$ a.u. 电子密度等值面验证，范德华近似表面不用于严格准确性结论。
+
+\end{document}
