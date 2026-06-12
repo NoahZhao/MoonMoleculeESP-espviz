@@ -1,6 +1,11 @@
 # Scientific Model
 
-`espviz` visualizes the electrostatic potential implied by assigned atomic partial charges. It is a classical atom-centered monopole post-processing tool, not an ab initio quantum-chemistry solver.
+`espviz` has two explicitly separated electrostatic models:
+
+- Assigned-charge visualization: the original classical atom-centered point-charge approximation.
+- Density-grid MESP evaluation: a post-processing API that evaluates the quantum-chemistry electrostatic-potential formula when nuclei and an external electron-density grid are supplied.
+
+It is still not a Hartree-Fock or DFT solver: it does not optimize geometries, compute orbitals, build density matrices, or fit charges.
 
 ## Quantum-Chemistry Reference
 
@@ -10,11 +15,31 @@ The molecular electrostatic potential used in quantum chemistry is normally defi
 V(r) = sum_A Z_A / |r - R_A| - integral rho(r') / |r - r'| dr'
 ```
 
-In atomic units this expression is in Hartree per unit positive charge. In Angstrom and elementary-charge units, the same Coulomb kernel is multiplied by `14.3996454784255 eV Angstrom / e^2`.
+In atomic units this expression is in Hartree per unit positive charge. In Angstrom and elementary-charge units, `espviz` multiplies the Coulomb kernel by `14.3996454784255 eV Angstrom / e^2`. `rho(r')` is a positive electron number density; the minus sign is the electron charge contribution.
 
-This quantum-chemistry MEP requires nuclear charges `Z_A` and an electron density `rho`, usually from a Hartree-Fock or density-functional calculation. `espviz` does not have electron density, basis functions, orbital coefficients, or a density matrix, and therefore cannot compute an ab initio MEP from first principles.
+This quantum-chemistry MEP requires nuclear charges `Z_A` and an electron density `rho`, usually from a Hartree-Fock or density-functional calculation. The MoonBit core can integrate a supplied density grid with `mesp_at` and `compute_mesp_plane`; it cannot produce that density grid from first principles.
 
-## Implemented Formula
+## Implemented Formulas
+
+### Density-grid MESP
+
+For a sample point `r`, `mesp_at` evaluates:
+
+```text
+V(r) = k_e * [ sum_A Z_A / |r - R_A|
+               - sum_g rho_g * deltaV_g / |r - r_g| ]
+```
+
+where:
+
+- `Z_A` is the integer nuclear charge.
+- `rho_g` is electron density in `e / Angstrom^3`.
+- `deltaV_g` is the density-grid cell volume in `Angstrom^3`.
+- Coordinates are Angstrom and the result is `eV/e`.
+
+This is a direct midpoint quadrature of the accepted MESP expression. Accuracy is controlled by the quality, extent, and spacing of the supplied density grid. Samples exactly on a density-grid point use a finite same-cell spherical average for that cell contribution; samples on or too close to a nucleus are rejected because the nuclear term diverges.
+
+### Assigned point charges
 
 For a sample point `r`, `espviz` evaluates the standard partial-charge, atom-centered monopole approximation:
 
@@ -34,28 +59,37 @@ This approximation replaces the full nuclear-plus-electronic charge distribution
 ## Physical Boundaries
 
 - The model is valid for visualizing a potential from already assigned point charges, such as force-field, RESP/ESP-fit, Mulliken, or NPA charges.
-- It does not compute electron density, molecular orbitals, nuclei-electron attraction from first principles, or charge fitting.
+- The density-grid MESP API is valid only when the electron density came from an upstream quantum-chemistry calculation and uses consistent units.
+- It does not compute molecular orbitals, nuclei-electron attraction integrals over basis functions, exchange-correlation effects, or charge fitting.
 - It does not optimize molecular geometry. Input coordinates must already represent the intended molecular structure.
-- It does not include exchange-correlation effects, polarization, dielectric screening, periodic images, or Gaussian charge smearing.
+- It does not include dielectric screening, periodic images, or Gaussian charge smearing unless those effects are already present in the supplied density or charges.
 - It is singular at point-charge positions. The implementation rejects samples inside `minimum_distance` instead of smoothing or clipping the singularity.
 
 ## Input Requirements
 
 - Coordinates must use Angstrom consistently.
 - Charges must use elementary-charge units.
+- Nuclei for `mesp_at` must use integer atomic numbers, not partial charges.
+- Density-grid values must be non-negative electron number densities in `e / Angstrom^3`. Use `density_au_to_e_per_angstrom3` for densities stored in atomic units.
 - The molecule must contain at least one atom.
 - The sampled plane should not pass through atom centers unless those grid points are intentionally excluded with `minimum_distance`.
 - Neutrality is not required for an isolated finite point-charge potential, but `is_nearly_neutral` is provided because many molecular charge models are expected to be neutral.
 
+## Molecular Surface
+
+The common quantum-chemistry MESP surface is an electron-density isosurface, usually `rho = 0.001 a.u.` and sometimes `0.002 a.u.`. `espviz` exposes `STANDARD_MESP_SURFACE_DENSITY_AU` and `ALTERNATE_MESP_SURFACE_DENSITY_AU` constants plus unit conversion helpers so callers can build such surfaces from an external density grid.
+
+The current CLI renders 2D planes, not surfaces. The 3D frontend's exterior surface is the continuous boundary of the union of atomic van der Waals spheres, extracted from `min_i(|r - R_i| - r_vdw_i) = 0`. That frontend surface is useful for interactive inspection of assigned point-charge models, but it is not the 0.001 a.u. electron-density isosurface used for rigorous MESP surface maps.
+
 ## Visualization Choices
 
-The color scale is a rendering operation only. Negative potential is mapped to red, positive potential is mapped to blue, and values near zero are white. It does not change the computed potential values.
+The color scale is a rendering operation only. Negative potential is mapped to red, positive potential is mapped to blue, and values near zero are white. It does not change the computed potential values. For comparing different molecules or different surfaces, use a fixed symmetric color scale through `fixed_symmetric_color_scale`; per-grid auto-scaling can make unlike numerical ranges look visually similar.
 
 Atom circles in the SVG are projected markers. They help interpret the heatmap but are not part of the electrostatic calculation.
 
 The 3D frontend's molecule presets use common gas-phase geometries to make molecular shape recognizable: for example water is bent, ammonia is trigonal pyramidal, methane is tetrahedral, carbon dioxide is linear, and formaldehyde is trigonal planar at carbon. They are still compact demo inputs, not optimized quantum-chemistry geometries.
 
-The 3D frontend's exterior ESP surface is the continuous boundary of the union of atomic van der Waals spheres, extracted from the signed-distance field `min_i(|r - R_i| - r_vdw_i) = 0`. ESP values are evaluated at the generated surface vertices using the same partial-charge Coulomb formula. This surface is not an electron-density isosurface, solvent-accessible surface, or quantum-chemistry molecular surface.
+The 3D frontend uses one shared zero-centered color scale for its slice and van der Waals contour so the legend corresponds to both colored objects.
 
 The slice selector uses literal Cartesian planes in the input coordinate system:
 

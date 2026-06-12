@@ -4,7 +4,23 @@
 /// units and coordinates are Angstrom.
 pub const COULOMB_EV_ANGSTROM : Double = 14.3996454784255
 
+/// Bohr radius in Angstrom, used to convert electron densities between
+/// atomic units and e/Angstrom^3.
+pub const BOHR_RADIUS_ANGSTROM : Double = 0.529177210903
+
+/// One Hartree per unit positive charge in eV/e.
+pub const HARTREE_EV : Double = 27.211386245988
+
+/// Common electron-density isovalue for quantum-chemistry MESP surfaces.
+///
+/// The 0.001 a.u. isodensity surface is a standard molecular surface used in
+/// electrostatic-potential surface maps. 0.002 a.u. is also common.
+pub const STANDARD_MESP_SURFACE_DENSITY_AU : Double = 0.001
+
+pub const ALTERNATE_MESP_SURFACE_DENSITY_AU : Double = 0.002
+
 const EPSILON : Double = 0.000000000001
+const PI : Double = 3.141592653589793
 
 pub(all) struct Vec3 {
   x : Double
@@ -16,6 +32,29 @@ pub(all) struct Atom {
   element : String
   position : Vec3
   charge : Double
+} derive(Debug)
+
+/// A nucleus for the quantum-chemistry electrostatic-potential expression.
+///
+/// `atomic_number` is the nuclear charge Z_A, not an assigned partial charge.
+pub(all) struct Nucleus {
+  element : String
+  position : Vec3
+  atomic_number : Int
+} derive(Debug)
+
+/// Uniform orthogonal electron-density quadrature grid.
+///
+/// Densities are positive electron number densities in e/Angstrom^3. The
+/// samples are interpreted as quadrature points with weight
+/// `spacing.x * spacing.y * spacing.z`.
+pub(all) struct ElectronDensityGrid {
+  origin : Vec3
+  spacing : Vec3
+  nx : Int
+  ny : Int
+  nz : Int
+  densities_e_per_angstrom3 : FixedArray[Double]
 } derive(Debug)
 
 pub(all) enum Axis {
@@ -50,6 +89,11 @@ pub(all) struct Rgb {
   b : Int
 } derive(Debug, Eq)
 
+pub(all) struct PotentialColorScale {
+  negative_limit : Double
+  positive_limit : Double
+} derive(Debug)
+
 pub(all) suberror ElectrostaticError {
   EmptyMolecule
   InvalidGrid(String)
@@ -69,6 +113,16 @@ pub fn make_atom(
   charge : Double
 ) -> Atom {
   { element, position: { x, y, z }, charge }
+}
+
+pub fn make_nucleus(
+  element : String,
+  x : Double,
+  y : Double,
+  z : Double,
+  atomic_number : Int
+) -> Nucleus {
+  { element, position: { x, y, z }, atomic_number }
 }
 
 /// A compact water molecule with approximate partial charges.
@@ -110,6 +164,124 @@ pub fn is_nearly_neutral(
   abs_double(total_charge(atoms)) <= tolerance
 }
 
+pub fn density_au_to_e_per_angstrom3(density_au : Double) -> Double {
+  density_au / bohr_volume_angstrom3()
+}
+
+pub fn density_e_per_angstrom3_to_au(density_e_per_angstrom3 : Double) -> Double {
+  density_e_per_angstrom3 * bohr_volume_angstrom3()
+}
+
+pub fn standard_mesp_surface_density_e_per_angstrom3() -> Double {
+  density_au_to_e_per_angstrom3(STANDARD_MESP_SURFACE_DENSITY_AU)
+}
+
+/// Quantum-chemistry molecular electrostatic potential from nuclei and density.
+///
+/// Evaluates, in eV/e,
+///
+///   V(r) = k [ sum_A Z_A / |r - R_A|
+///              - integral rho(r') / |r - r'| dr' ]
+///
+/// using midpoint quadrature over `density_grid`. Coordinates are Angstrom,
+/// `rho` is e/Angstrom^3, and `Z_A` is the integer nuclear charge.
+pub fn mesp_at(
+  nuclei : Array[Nucleus],
+  density_grid : ElectronDensityGrid,
+  point : Vec3,
+  minimum_nuclear_distance? : Double = 0.000001
+) -> Double raise ElectrostaticError {
+  nuclear_potential_at(nuclei, point, minimum_distance=minimum_nuclear_distance) -
+  electronic_potential_from_density_grid_at(density_grid, point)
+}
+
+pub fn nuclear_potential_at(
+  nuclei : Array[Nucleus],
+  point : Vec3,
+  minimum_distance? : Double = 0.000001
+) -> Double raise ElectrostaticError {
+  guard nuclei.length() > 0 else { raise EmptyMolecule }
+  guard minimum_distance >= 0.0 else { raise InvalidMinimumDistance(minimum_distance) }
+  let mut potential = 0.0
+  for nucleus in nuclei {
+    guard nucleus.atomic_number > 0 else {
+      raise InvalidGrid("nuclear charge Z_A must be positive")
+    }
+    let r = distance(point, nucleus.position)
+    guard r >= minimum_distance && r > 0.0 else {
+      raise SingularPoint("sample point is on or too close to a nucleus")
+    }
+    potential += COULOMB_EV_ANGSTROM * nucleus.atomic_number.to_double() / r
+  }
+  potential
+}
+
+pub fn electronic_potential_from_density_grid_at(
+  grid : ElectronDensityGrid,
+  point : Vec3
+) -> Double raise ElectrostaticError {
+  validate_density_grid(grid)
+  let cell_volume = grid.cell_volume()
+  let mut potential = 0.0
+  for iz in 0..<grid.nz {
+    for iy in 0..<grid.ny {
+      for ix in 0..<grid.nx {
+        let density = grid.densities_e_per_angstrom3[grid.density_index(ix, iy, iz)]
+        if density > EPSILON {
+          let sample_point = grid.sample_position(ix, iy, iz)
+          let r = distance(point, sample_point)
+          let kernel = if r <= EPSILON {
+            finite_self_cell_kernel(cell_volume)
+          } else {
+            1.0 / r
+          }
+          potential += COULOMB_EV_ANGSTROM * density * cell_volume * kernel
+        }
+      }
+    }
+  }
+  potential
+}
+
+pub fn total_electrons(grid : ElectronDensityGrid) -> Double raise ElectrostaticError {
+  validate_density_grid(grid)
+  let cell_volume = grid.cell_volume()
+  let mut sum = 0.0
+  for i in 0..<grid.densities_e_per_angstrom3.length() {
+    sum += grid.densities_e_per_angstrom3[i] * cell_volume
+  }
+  sum
+}
+
+pub fn ElectronDensityGrid::density_index(
+  self : ElectronDensityGrid,
+  ix : Int,
+  iy : Int,
+  iz : Int
+) -> Int raise ElectrostaticError {
+  guard ix >= 0 && ix < self.nx && iy >= 0 && iy < self.ny && iz >= 0 && iz < self.nz else {
+    raise InvalidGrid("density-grid coordinate is out of bounds")
+  }
+  (iz * self.ny + iy) * self.nx + ix
+}
+
+pub fn ElectronDensityGrid::cell_volume(self : ElectronDensityGrid) -> Double {
+  self.spacing.x * self.spacing.y * self.spacing.z
+}
+
+pub fn ElectronDensityGrid::sample_position(
+  self : ElectronDensityGrid,
+  ix : Int,
+  iy : Int,
+  iz : Int
+) -> Vec3 {
+  {
+    x: self.origin.x + ix.to_double() * self.spacing.x,
+    y: self.origin.y + iy.to_double() * self.spacing.y,
+    z: self.origin.z + iz.to_double() * self.spacing.z,
+  }
+}
+
 pub fn potential_at(
   atoms : Array[Atom],
   point : Vec3,
@@ -145,6 +317,39 @@ pub fn compute_plane(
     for ix in 0..<plane.width {
       let point = plane_point(plane, ix, iy)
       let value = potential_at(atoms, point, minimum_distance=plane.minimum_distance)
+      values[iy * plane.width + ix] = value
+      if value < min_value {
+        min_value = value
+      }
+      if value > max_value {
+        max_value = value
+      }
+    }
+  }
+  { width: plane.width, height: plane.height, min_value, max_value, values }
+}
+
+pub fn compute_mesp_plane(
+  nuclei : Array[Nucleus],
+  density_grid : ElectronDensityGrid,
+  plane : Plane
+) -> Grid2D raise ElectrostaticError {
+  guard nuclei.length() > 0 else { raise EmptyMolecule }
+  validate_density_grid(density_grid)
+  validate_plane(plane)
+  let size = plane.width * plane.height
+  let values = FixedArray::make(size, 0.0)
+  let mut min_value = 1.0e300
+  let mut max_value = -1.0e300
+  for iy in 0..<plane.height {
+    for ix in 0..<plane.width {
+      let point = plane_point(plane, ix, iy)
+      let value = mesp_at(
+        nuclei,
+        density_grid,
+        point,
+        minimum_nuclear_distance=plane.minimum_distance,
+      )
       values[iy * plane.width + ix] = value
       if value < min_value {
         min_value = value
@@ -215,8 +420,8 @@ pub fn to_svg(grid : Grid2D) -> String {
   builder.write_string(" ")
   builder.write_object(grid.height)
   builder.write_string("\" shape-rendering=\"crispEdges\">\n")
-  builder.write_string("<title>Electrostatic potential slice</title>\n")
-  builder.write_string("<desc>Red is negative potential, white is neutral, blue is positive potential.</desc>\n")
+  builder.write_string("<title>Point-charge electrostatic potential slice</title>\n")
+  builder.write_string("<desc>Assigned atom-centered charges: red is negative potential, white is neutral, blue is positive potential.</desc>\n")
   for y in 0..<grid.height {
     let source_y = grid.height - 1 - y
     for x in 0..<grid.width {
@@ -257,14 +462,14 @@ pub fn to_visual_svg(grid : Grid2D, plane : Plane, atoms : Array[Atom]) -> Strin
   builder.write_string(" ")
   builder.write_object(total_height)
   builder.write_string("\" role=\"img\">\n")
-  builder.write_string("<title>Molecular electrostatic potential</title>\n")
+  builder.write_string("<title>Point-charge electrostatic potential</title>\n")
   builder.write_string(
-    "<desc>Red is negative potential, white is near zero, blue is positive. Circles mark atom projections on the sampled plane.</desc>\n",
+    "<desc>Potential from assigned atom-centered point charges. Red is negative, white is near zero, blue is positive. Circles mark atom projections on the sampled plane.</desc>\n",
   )
   builder.write_string("<rect width=\"100%\" height=\"100%\" fill=\"#f8fafc\"/>\n")
   builder.write_string("<text x=\"")
   builder.write_object(margin_left)
-  builder.write_string("\" y=\"28\" font-family=\"Arial, sans-serif\" font-size=\"20\" font-weight=\"700\" fill=\"#111827\">Electrostatic potential slice</text>\n")
+  builder.write_string("\" y=\"28\" font-family=\"Arial, sans-serif\" font-size=\"20\" font-weight=\"700\" fill=\"#111827\">Point-charge ESP slice</text>\n")
   builder.write_string("<text x=\"")
   builder.write_object(margin_left)
   builder.write_string("\" y=\"46\" font-family=\"Arial, sans-serif\" font-size=\"12\" fill=\"#4b5563\">")
@@ -397,14 +602,29 @@ pub fn grid_summary(grid : Grid2D) -> String {
 }
 
 pub fn color_for(value : Double, min_value : Double, max_value : Double) -> Rgb {
+  color_for_scale(value, symmetric_color_scale(min_value, max_value))
+}
+
+pub fn symmetric_color_scale(min_value : Double, max_value : Double) -> PotentialColorScale {
   let scale = max_double(abs_double(min_value), abs_double(max_value))
-  if scale <= EPSILON {
+  { negative_limit: -scale, positive_limit: scale }
+}
+
+pub fn fixed_symmetric_color_scale(limit : Double) -> PotentialColorScale raise ElectrostaticError {
+  guard limit > 0.0 else { raise InvalidGrid("fixed color-scale limit must be positive") }
+  { negative_limit: -limit, positive_limit: limit }
+}
+
+pub fn color_for_scale(value : Double, scale : PotentialColorScale) -> Rgb {
+  let negative_limit = abs_double(scale.negative_limit)
+  let positive_limit = abs_double(scale.positive_limit)
+  if negative_limit <= EPSILON && positive_limit <= EPSILON {
     { r: 255, g: 255, b: 255 }
   } else if value < -EPSILON {
-    let c = channel(1.0 - abs_double(value) / scale)
+    let c = channel(1.0 - abs_double(value) / max_double(negative_limit, EPSILON))
     { r: 255, g: c, b: c }
   } else {
-    let c = channel(1.0 - value / scale)
+    let c = channel(1.0 - value / max_double(positive_limit, EPSILON))
     { r: c, g: c, b: 255 }
   }
 }
@@ -417,6 +637,57 @@ fn validate_plane(plane : Plane) -> Unit raise ElectrostaticError {
     raise InvalidGrid("plane ranges must be increasing")
   }
   guard plane.minimum_distance >= 0.0 else { raise InvalidMinimumDistance(plane.minimum_distance) }
+}
+
+fn validate_density_grid(grid : ElectronDensityGrid) -> Unit raise ElectrostaticError {
+  guard grid.nx > 0 && grid.ny > 0 && grid.nz > 0 else {
+    raise InvalidGrid("density-grid dimensions must be positive")
+  }
+  guard grid.spacing.x > 0.0 && grid.spacing.y > 0.0 && grid.spacing.z > 0.0 else {
+    raise InvalidGrid("density-grid spacing must be positive Angstrom values")
+  }
+  guard grid.densities_e_per_angstrom3.length() == grid.nx * grid.ny * grid.nz else {
+    raise InvalidGrid("density-grid data length does not match dimensions")
+  }
+  for i in 0..<grid.densities_e_per_angstrom3.length() {
+    guard grid.densities_e_per_angstrom3[i] >= 0.0 else {
+      raise InvalidGrid("electron density must be non-negative")
+    }
+  }
+}
+
+fn bohr_volume_angstrom3() -> Double {
+  BOHR_RADIUS_ANGSTROM * BOHR_RADIUS_ANGSTROM * BOHR_RADIUS_ANGSTROM
+}
+
+fn finite_self_cell_kernel(cell_volume : Double) -> Double {
+  let radius = cube_root(3.0 * cell_volume / (4.0 * PI))
+  2.0 * PI * radius * radius / cell_volume
+}
+
+fn cube_root(value : Double) -> Double {
+  if value <= 0.0 {
+    0.0
+  } else {
+    let mut low = 0.0
+    let mut high = if value > 1.0 { value } else { 1.0 }
+    for _ in 0..<80 {
+      let mid = (low + high) * 0.5
+      if mid * mid * mid <= value {
+        low = mid
+      } else {
+        high = mid
+      }
+    }
+    (low + high) * 0.5
+  }
+}
+
+fn distance(a : Vec3, b : Vec3) -> Double {
+  let dx = a.x - b.x
+  let dy = a.y - b.y
+  let dz = a.z - b.z
+  (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
 fn plane_point(plane : Plane, ix : Int, iy : Int) -> Vec3 {

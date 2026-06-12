@@ -248,7 +248,7 @@
   </style>
 </head>
 <body>
-  <canvas id="scene" aria-label="3D molecular electrostatic potential visualization"></canvas>
+  <canvas id="scene" aria-label="3D assigned-charge electrostatic potential visualization"></canvas>
 
   <div class="topbar">
     <div class="brand">
@@ -260,7 +260,7 @@
       <button id="rotate" type="button" aria-pressed="true" title="Toggle rotation">Rotate</button>
       <button id="atoms" type="button" aria-pressed="true" title="Toggle atoms">Atoms</button>
       <button id="slice" type="button" aria-pressed="true" title="Toggle potential slice">Slice</button>
-      <button id="surface" type="button" aria-pressed="true" title="Toggle atom-contour electrostatic potential">Exterior ESP</button>
+      <button id="surface" type="button" aria-pressed="true" title="Toggle van der Waals contour ESP">Exterior ESP</button>
       <select id="axis" title="Slice axis">
         <option value="z" selected>z plane</option>
         <option value="y">y plane</option>
@@ -388,6 +388,8 @@ H -0.5880 -0.9490 0.0000 0.050`,
     let viewRadius = 2.4;
     let sliceStats = null;
     let surfaceStats = null;
+    let surfaceValues = [];
+    let activeColorLimit = 1;
 
     const canvas = document.getElementById("scene");
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -717,9 +719,10 @@ H -0.5880 -0.9490 0.0000 0.050`,
         max = 1;
       }
       sliceStats = { min, max, excluded };
+      activeColorLimit = sharedColorLimit();
 
       for (let i = 0; i < values.length; i += 1) {
-        const color = values[i] === null ? [17, 24, 39, 80] : colorFor(values[i], min, max);
+        const color = values[i] === null ? [17, 24, 39, 80] : colorForLimit(values[i], activeColorLimit);
         image.data[i * 4 + 0] = color[0];
         image.data[i * 4 + 1] = color[1];
         image.data[i * 4 + 2] = color[2];
@@ -750,9 +753,8 @@ H -0.5880 -0.9490 0.0000 0.050`,
       root.add(sliceMesh);
 
       readout.textContent = `${state.axis} = ${state.offset.toFixed(2)} A`;
-      maxTick.textContent = max.toFixed(2);
-      minTick.textContent = min.toFixed(2);
-      updateColorBar(min, max);
+      recolorSurface(activeColorLimit);
+      updateColorBar(activeColorLimit);
       updateStatus();
     }
 
@@ -776,6 +778,7 @@ H -0.5880 -0.9490 0.0000 0.050`,
       const step = (extent * 2) / gridCount;
       const positions = [];
       const values = [];
+      surfaceValues = [];
       let min = Number.POSITIVE_INFINITY;
       let max = Number.NEGATIVE_INFINITY;
       for (let ix = 0; ix < gridCount; ix += 1) {
@@ -810,10 +813,12 @@ H -0.5880 -0.9490 0.0000 0.050`,
         max = 1;
       }
       surfaceStats = { min, max, count: positions.length / 9, validCount };
+      surfaceValues = values.slice();
+      activeColorLimit = sharedColorLimit();
 
       const colors = [];
       for (const value of values) {
-        const color = colorFor(value, min, max);
+        const color = colorForLimit(value, activeColorLimit);
         colors.push(color[0] / 255, color[1] / 255, color[2] / 255);
       }
 
@@ -832,6 +837,7 @@ H -0.5880 -0.9490 0.0000 0.050`,
       surfaceMesh = new THREE.Mesh(geometry, material);
       surfaceGroup.add(surfaceMesh);
       surfaceGroup.visible = state.showSurface;
+      updateColorBar(activeColorLimit);
     }
 
     function molecularContourField(point) {
@@ -931,13 +937,37 @@ H -0.5880 -0.9490 0.0000 0.050`,
       status.textContent = `${atoms.length} atoms, total charge ${totalCharge(atoms).toFixed(3)} e; ${sliceText}; ${contourText}.`;
     }
 
-    function updateColorBar(min, max) {
+    function sharedColorLimit() {
+      let limit = 1e-12;
+      if (sliceStats) {
+        limit = Math.max(limit, Math.abs(sliceStats.min), Math.abs(sliceStats.max));
+      }
+      if (surfaceStats) {
+        limit = Math.max(limit, Math.abs(surfaceStats.min), Math.abs(surfaceStats.max));
+      }
+      return limit;
+    }
+
+    function recolorSurface(limit) {
+      if (!surfaceMesh || surfaceValues.length === 0) return;
+      const colors = [];
+      for (const value of surfaceValues) {
+        const color = colorForLimit(value, limit);
+        colors.push(color[0] / 255, color[1] / 255, color[2] / 255);
+      }
+      surfaceMesh.geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+      surfaceMesh.geometry.attributes.color.needsUpdate = true;
+    }
+
+    function updateColorBar(limit) {
+      maxTick.textContent = limit.toFixed(2);
+      minTick.textContent = (-limit).toFixed(2);
       const stops = [];
       const steps = 12;
       for (let i = 0; i <= steps; i += 1) {
         const t = i / steps;
-        const value = max - t * (max - min);
-        const color = colorFor(value, min, max);
+        const value = limit - t * limit * 2;
+        const color = colorForLimit(value, limit);
         stops.push(`rgb(${color[0]},${color[1]},${color[2]}) ${Math.round(t * 100)}%`);
       }
       colorBar.style.background = `linear-gradient(to bottom, ${stops.join(", ")})`;
@@ -1048,8 +1078,8 @@ H -0.5880 -0.9490 0.0000 0.050`,
       return geometry;
     }
 
-    function colorFor(value, min, max) {
-      const scale = Math.max(Math.abs(min), Math.abs(max), 1e-12);
+    function colorForLimit(value, limit) {
+      const scale = Math.max(limit, 1e-12);
       const t = Math.min(1, Math.abs(value) / scale);
       const channel = Math.round((1 - t) * 255);
       if (value < 0) {

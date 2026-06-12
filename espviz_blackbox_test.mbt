@@ -41,6 +41,40 @@ test "point-charge Coulomb potential" {
   assert_close(actual, expected, 0.000000001)
 }
 
+test "quantum nuclear potential uses atomic number not partial charge" {
+  let nuclei : Array[@espviz.Nucleus] = [@espviz.make_nucleus("He", 0.0, 0.0, 0.0, 2)]
+  let point = @espviz.make_vec3(2.0, 0.0, 0.0)
+  let actual = @espviz.nuclear_potential_at(nuclei, point, minimum_distance=0.0)
+  let expected = @espviz.COULOMB_EV_ANGSTROM
+  assert_close(actual, expected, 0.000000001)
+}
+
+test "electron density contribution is subtracted from MESP" {
+  let nuclei : Array[@espviz.Nucleus] = [@espviz.make_nucleus("H", 0.0, 0.0, 0.0, 1)]
+  let densities = FixedArray::make(1, 1.0)
+  let density_grid = @espviz.ElectronDensityGrid::{
+    origin: @espviz.make_vec3(0.0, 0.0, 0.0),
+    spacing: @espviz.make_vec3(1.0, 1.0, 1.0),
+    nx: 1,
+    ny: 1,
+    nz: 1,
+    densities_e_per_angstrom3: densities,
+  }
+  let point = @espviz.make_vec3(2.0, 0.0, 0.0)
+  let nuclear = @espviz.nuclear_potential_at(nuclei, point, minimum_distance=0.0)
+  let electronic = @espviz.electronic_potential_from_density_grid_at(density_grid, point)
+  let mesp = @espviz.mesp_at(nuclei, density_grid, point, minimum_nuclear_distance=0.0)
+  assert_close(@espviz.total_electrons(density_grid), 1.0, 0.000000001)
+  assert_true(electronic > 0.0)
+  assert_close(mesp, nuclear - electronic, 0.000000001)
+  assert_close(mesp, 0.0, 0.000000001)
+}
+
+test "standard MESP density is converted from atomic units" {
+  let density = @espviz.standard_mesp_surface_density_e_per_angstrom3()
+  assert_close(@espviz.density_e_per_angstrom3_to_au(density), 0.001, 0.000000001)
+}
+
 test "water sample has physical gas-phase geometry" {
   let atoms = @espviz.sample_water()
   let oxygen = atoms[0].position
@@ -204,5 +238,13 @@ test "positive potential maps to blue" {
   let color = @espviz.color_for(2.0, -2.0, 2.0)
   assert_eq(color.r, 0)
   assert_eq(color.g, 0)
+  assert_eq(color.b, 255)
+}
+
+test "fixed color scale keeps zero centered independent of data extrema" {
+  let scale = @espviz.fixed_symmetric_color_scale(4.0)
+  let color = @espviz.color_for_scale(2.0, scale)
+  assert_eq(color.r, 127)
+  assert_eq(color.g, 127)
   assert_eq(color.b, 255)
 }

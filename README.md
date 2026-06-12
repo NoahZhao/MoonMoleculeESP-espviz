@@ -1,13 +1,15 @@
 # espviz
 
-`espviz` is a MoonBit library and CLI for visualizing a molecular electrostatic-potential slice from assigned atomic partial charges. It is meant for small molecules, teaching demos, and quick inspection of force-field or charge-fitting models without Python, NumPy, or plotting dependencies.
+`espviz` is a MoonBit library and CLI for visualizing electrostatic-potential slices. The default workflow visualizes assigned atomic partial charges, which is useful for small molecules, teaching demos, and quick inspection of force-field or charge-fitting models without Python, NumPy, or plotting dependencies.
 
-The current implementation evaluates the classical point-charge Coulomb potential on a 2D plane and exports the grid as SVG, PPM, or CSV. The default SVG is a complete visualization with a heatmap, colorbar, numeric range, atom projections, and element labels. Red means negative potential, white is near neutral, and blue means positive potential.
+The core also exposes a density-grid MESP API for the quantum-chemistry formula when external nuclei and electron density data are supplied. It evaluates nuclear charge minus electron-density Coulomb integral on a plane, but it does not generate electron density from molecular orbitals.
+
+The CLI demo evaluates the classical point-charge Coulomb potential on a 2D plane and exports the grid as SVG, PPM, or CSV. The default SVG is a complete visualization with a heatmap, colorbar, numeric range, atom projections, and element labels. Red means negative potential, white is near neutral, and blue means positive potential.
 
 ## Project Status
 
 - Main language: MoonBit.
-- Core API: molecule atoms, plane sampling, potential grid, CSV/PPM/SVG renderers.
+- Core API: assigned-charge atoms, quantum nuclei, electron-density grids, plane sampling, potential grids, CSV/PPM/SVG renderers.
 - Example: built-in water molecule demo in `cmd/main`.
 - Tests: black-box tests cover potential evaluation, neutrality, cancellation, grid validation, renderers, and diverging ESP color scales.
 - License: MIT.
@@ -69,7 +71,7 @@ Open the interactive 3D frontend:
 python3 -m http.server 8080
 ```
 
-Then open `http://127.0.0.1:8080/examples/espviz_3d.html`. The page shows a 3D molecule, an interactive ESP slice plane, atom labels, a continuous van der Waals contour colored by ESP, a colorbar, orbit controls, and toggles for atoms/slice/exterior ESP/rotation. It loads Three.js from a CDN, so the browser needs network access for the first load.
+Then open `http://127.0.0.1:8080/examples/espviz_3d.html`. The page shows a 3D molecule, an interactive point-charge ESP slice plane, atom labels, a continuous van der Waals contour colored by the same point-charge ESP, a shared colorbar, orbit controls, and toggles for atoms/slice/exterior ESP/rotation. It loads Three.js from a CDN, so the browser needs network access for the first load.
 
 The 3D page also accepts a custom molecule in the editor. Use one atom per line:
 
@@ -81,7 +83,7 @@ H -0.610 0.940 0.000 0.28
 H -0.610 -0.940 0.000 0.27
 ```
 
-The columns are element symbol, x coordinate, y coordinate, z coordinate, and partial charge. The fourth column is the z coordinate in Angstrom; the fifth column is the charge in elementary-charge units. Blank lines and `#` comments are ignored. The frontend preserves this coordinate system, infers simple bonds from covalent radii for display, redraws the slice, and colors the continuous union of atomic van der Waals contours by electrostatic potential.
+The columns are element symbol, x coordinate, y coordinate, z coordinate, and partial charge. The fourth column is the z coordinate in Angstrom; the fifth column is the charge in elementary-charge units. Blank lines and `#` comments are ignored. The frontend preserves this coordinate system, infers simple bonds from covalent radii for display, redraws the slice, and colors the continuous union of atomic van der Waals contours by the assigned-charge electrostatic potential.
 
 Additional example inputs:
 
@@ -131,6 +133,31 @@ try @espviz.compute_plane(atoms, plane) catch {
 }
 ```
 
+For rigorous quantum-chemistry MESP post-processing, supply nuclei and an electron-density grid from an upstream Hartree-Fock or DFT calculation:
+
+```moonbit
+let nuclei : Array[@espviz.Nucleus] = [
+  @espviz.make_nucleus("H", 0.0, 0.0, 0.0, 1),
+]
+
+let densities = FixedArray::make(1, 1.0) // e / Angstrom^3
+let density_grid = @espviz.ElectronDensityGrid::{
+  origin: @espviz.make_vec3(0.0, 0.0, 0.0),
+  spacing: @espviz.make_vec3(1.0, 1.0, 1.0),
+  nx: 1,
+  ny: 1,
+  nz: 1,
+  densities_e_per_angstrom3: densities,
+}
+
+let potential = @espviz.mesp_at(
+  nuclei,
+  density_grid,
+  @espviz.make_vec3(2.0, 0.0, 0.0),
+  minimum_nuclear_distance=0.0,
+)
+```
+
 ## Reproduce
 
 ```bash
@@ -144,7 +171,7 @@ CI runs the same check/build/test/smoke-test flow in `.github/workflows/ci.yml`.
 
 ## Design Notes
 
-The visualizer uses:
+The assigned-charge visualizer uses:
 
 ```text
 phi(point) = 14.3996454784255 * sum(q_i / r_i)
@@ -152,7 +179,13 @@ phi(point) = 14.3996454784255 * sum(q_i / r_i)
 
 Coordinates are Angstrom, charges are elementary-charge units, and the potential unit is eV per unit positive test charge. The model is physically meaningful only outside point-charge singularities. `minimum_distance` defines an excluded radius around atoms; sampling inside that radius raises an error instead of hiding the singularity.
 
-This is not an ab initio quantum-chemistry ESP calculator: it does not solve the electronic Schrodinger equation, does not compute electron density, and does not fit charges. It visualizes the atom-centered monopole approximation implied by charges supplied by the user or by a sample model. See `docs/SCIENTIFIC_MODEL.md` for the scientific assumptions and limits. This is intentionally different from a full periodic FFT Poisson solver; see `docs/PORTING.md` for the reference comparison and migration notes.
+The rigorous MESP formula is:
+
+```text
+V(r) = k * [ sum_A Z_A / |r - R_A| - integral rho(r') / |r - r'| dr' ]
+```
+
+`mesp_at` evaluates the integral by direct quadrature over a supplied density grid. True surface MESP maps should use an electron-density isosurface, commonly `rho = 0.001 a.u.` or `0.002 a.u.`; the interactive 3D page currently shows a van der Waals union surface for the assigned-charge model, not that quantum-chemistry isosurface. See `docs/SCIENTIFIC_MODEL.md` for the scientific assumptions and limits.
 
 ## Common Pitfalls
 

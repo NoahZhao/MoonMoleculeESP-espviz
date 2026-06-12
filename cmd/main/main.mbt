@@ -1,6 +1,6 @@
 fn usage() -> String {
   (
-    #|espviz renders the built-in water electrostatic-potential slice.
+    #|espviz renders the built-in water point-charge electrostatic-potential slice.
     #|
     #|Usage:
     #|  moon run cmd/main            # SVG to stdout

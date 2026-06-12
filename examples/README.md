@@ -24,7 +24,7 @@ Open:
 http://127.0.0.1:8080/examples/espviz_3d.html
 ```
 
-The 3D page uses Three.js from a CDN and displays the same classical point-charge ESP model as an interactive slice through a molecule. It also draws a continuous van der Waals contour surface colored by ESP, supports orbit controls, and includes toggles for atoms, slice, exterior ESP, and rotation.
+The 3D page uses Three.js from a CDN and displays the same classical point-charge ESP model as an interactive slice through a molecule. It also draws a continuous van der Waals contour surface colored by the same assigned-charge ESP, supports orbit controls, and includes toggles for atoms, slice, exterior ESP, and rotation. The slice and contour share one zero-centered colorbar.
 
 Use the custom molecule editor with one atom per line:
 
@@ -36,6 +36,6 @@ H -0.467 0.809 -0.386 0.10
 H -0.467 -0.809 -0.386 0.10
 ```
 
-The columns are element symbol, x coordinate, y coordinate, z coordinate, and partial charge. The fourth column is the z coordinate in Angstrom; the fifth column is the charge in elementary-charge units. The page preserves the input coordinate system, infers simple display bonds, redraws the ESP slice, and recomputes the continuous contour surface.
+The columns are element symbol, x coordinate, y coordinate, z coordinate, and partial charge. The fourth column is the z coordinate in Angstrom; the fifth column is the charge in elementary-charge units. The page preserves the input coordinate system, infers simple display bonds, redraws the ESP slice, and recomputes the continuous contour surface. This is not the quantum-chemistry 0.001 a.u. electron-density MESP surface.
 
 Other presets are available in the page: water, ammonia, methane, carbon dioxide, sodium chloride, and formaldehyde.
