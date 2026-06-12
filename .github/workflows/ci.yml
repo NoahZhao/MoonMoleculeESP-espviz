@@ -9,13 +9,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: moonbitlang/setup-moonbit@v1
+      
+      - name: Setup MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+      
       - name: Check
         run: moon check
+      
       - name: Build
         run: moon build --target native
+      
       - name: Test
         run: moon test
+      
       - name: Demo smoke test
         run: |
           moon run cmd/main summary
