@@ -12,7 +12,7 @@ jobs:
       
       - name: Setup MoonBit
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install.sh | bash
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s "latest"
           echo "$HOME/.moon/bin" >> $GITHUB_PATH
       
       - name: Check
