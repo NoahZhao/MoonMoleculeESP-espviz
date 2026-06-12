@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  moonbit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: moonbitlang/setup-moonbit@v1
+      - name: Check
+        run: moon check
+      - name: Build
+        run: moon build --target native
+      - name: Test
+        run: moon test
+      - name: Demo smoke test
+        run: |
+          moon run cmd/main summary
+          moon run cmd/main svg > /tmp/water.svg
+          test -s /tmp/water.svg

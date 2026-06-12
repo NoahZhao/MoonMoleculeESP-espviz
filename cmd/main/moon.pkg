@@ -1,0 +1,8 @@
+import {
+  "noahzhao/espviz" @espviz,
+  "moonbitlang/core/env",
+}
+
+options(
+  "is-main": true,
+)

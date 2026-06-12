@@ -1,0 +1,1089 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>espviz 3D</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --panel: rgba(255, 255, 255, 0.88);
+      --line: rgba(17, 24, 39, 0.14);
+      --text: #111827;
+      --muted: #4b5563;
+      --accent: #0f766e;
+      --warn: #b91c1c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: #eef2f7;
+    }
+
+    #scene {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+
+    .topbar {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      right: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 48px;
+      padding: 8px 10px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 156px;
+      padding-right: 8px;
+      border-right: 1px solid var(--line);
+    }
+
+    .brand strong {
+      font-size: 15px;
+      line-height: 18px;
+    }
+
+    .brand span,
+    .readout {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button,
+    select,
+    input[type="range"] {
+      height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #ffffff;
+      color: var(--text);
+      font: inherit;
+    }
+
+    button {
+      min-width: 34px;
+      padding: 0 10px;
+      cursor: pointer;
+    }
+
+    button[aria-pressed="true"] {
+      border-color: rgba(15, 118, 110, 0.45);
+      color: var(--accent);
+      background: #ecfdf5;
+    }
+
+    select {
+      padding: 0 26px 0 8px;
+    }
+
+    input[type="range"] {
+      width: 180px;
+      accent-color: var(--accent);
+      background: transparent;
+    }
+
+    .legend {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      display: grid;
+      grid-template-columns: 18px auto;
+      gap: 8px;
+      align-items: stretch;
+      padding: 10px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+    }
+
+    .bar {
+      width: 18px;
+      height: 142px;
+      border: 1px solid rgba(17, 24, 39, 0.28);
+      border-radius: 4px;
+      background: linear-gradient(to top, rgb(255,0,0), rgb(255,255,255), rgb(0,0,255));
+    }
+
+    .ticks {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 78px;
+    }
+
+    .status {
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      max-width: min(520px, calc(100vw - 36px));
+      padding: 10px 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+    }
+
+    .editor {
+      position: fixed;
+      top: 78px;
+      right: 14px;
+      width: min(360px, calc(100vw - 28px));
+      padding: 10px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+    }
+
+    .editor summary {
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 142px;
+      resize: vertical;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      color: var(--text);
+      background: #ffffff;
+    }
+
+    .editor-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .editor select {
+      width: 100%;
+      margin: 8px 0;
+    }
+
+    .message {
+      min-height: 18px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .message.error {
+      color: var(--warn);
+    }
+
+    @media (max-width: 720px) {
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .brand {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        width: 100%;
+        padding-right: 0;
+        padding-bottom: 8px;
+      }
+
+      input[type="range"] {
+        width: min(48vw, 220px);
+      }
+
+      .legend {
+        bottom: 74px;
+      }
+
+      .editor {
+        top: auto;
+        right: 14px;
+        bottom: 132px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene" aria-label="3D molecular electrostatic potential visualization"></canvas>
+
+  <div class="topbar">
+    <div class="brand">
+      <strong>espviz 3D</strong>
+      <span>Classical point-charge ESP</span>
+    </div>
+    <div class="controls">
+      <button id="reset" type="button" title="Reset view">Reset</button>
+      <button id="rotate" type="button" aria-pressed="true" title="Toggle rotation">Rotate</button>
+      <button id="atoms" type="button" aria-pressed="true" title="Toggle atoms">Atoms</button>
+      <button id="slice" type="button" aria-pressed="true" title="Toggle potential slice">Slice</button>
+      <button id="surface" type="button" aria-pressed="true" title="Toggle atom-contour electrostatic potential">Exterior ESP</button>
+      <select id="axis" title="Slice axis">
+        <option value="z" selected>z plane</option>
+        <option value="y">y plane</option>
+        <option value="x">x plane</option>
+      </select>
+      <input id="offset" type="range" min="-2.5" max="2.5" value="1.4" step="0.05" title="Slice position">
+      <span id="readout" class="readout">z = 1.40 A</span>
+    </div>
+  </div>
+
+  <div class="legend" aria-label="Potential color scale">
+    <div class="bar"></div>
+    <div class="ticks">
+      <span id="maxTick">max</span>
+      <span>0</span>
+      <span id="minTick">min</span>
+    </div>
+  </div>
+
+  <div id="status" class="status">Water partial charges: O -0.834, H +0.417, H +0.417. Samples inside atom singularities are excluded.</div>
+
+  <details class="editor">
+    <summary>Custom molecule</summary>
+    <select id="presetMolecule" title="Molecule preset">
+      <option value="">Custom</option>
+      <option value="water" selected>Water</option>
+      <option value="ammonia">Ammonia</option>
+      <option value="methane">Methane</option>
+      <option value="carbonDioxide">Carbon dioxide</option>
+      <option value="sodiumChloride">Sodium chloride</option>
+      <option value="formaldehyde">Formaldehyde</option>
+    </select>
+    <textarea id="moleculeInput" spellcheck="false">O 0.0000 0.0000 0.0000 -0.834
+H 0.9572 0.0000 0.0000 0.417
+H -0.2400 0.9266 0.0000 0.417</textarea>
+    <div class="editor-actions">
+      <button id="applyMolecule" type="button">Apply</button>
+      <button id="resetMolecule" type="button">Water</button>
+    </div>
+    <div id="moleculeMessage" class="message">Current molecule: water, total charge 0.000 e.</div>
+  </details>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+    const COULOMB_EV_ANGSTROM = 14.3996454784255;
+    const DEFAULT_MOLECULE_TEXT = `O 0.0000 0.0000 0.0000 -0.834
+H 0.9572 0.0000 0.0000 0.417
+H -0.2400 0.9266 0.0000 0.417`;
+    const MOLECULE_PRESETS = {
+      water: {
+        name: "Water",
+        text: DEFAULT_MOLECULE_TEXT,
+      },
+      ammonia: {
+        name: "Ammonia",
+        text: `N 0.0000 0.0000 0.0000 -0.300
+H 0.9340 0.0000 -0.3860 0.100
+H -0.4670 0.8090 -0.3860 0.100
+H -0.4670 -0.8090 -0.3860 0.100`,
+      },
+      methane: {
+        name: "Methane",
+        text: `C 0.0000 0.0000 0.0000 -0.240
+H 0.6290 0.6290 0.6290 0.060
+H -0.6290 -0.6290 0.6290 0.060
+H -0.6290 0.6290 -0.6290 0.060
+H 0.6290 -0.6290 -0.6290 0.060`,
+      },
+      carbonDioxide: {
+        name: "Carbon dioxide",
+        text: `O -1.1620 0.0000 0.0000 -0.350
+C 0.0000 0.0000 0.0000 0.700
+O 1.1620 0.0000 0.0000 -0.350`,
+      },
+      sodiumChloride: {
+        name: "Sodium chloride",
+        text: `Na -1.1800 0.0000 0.0000 1.000
+Cl 1.1800 0.0000 0.0000 -1.000`,
+      },
+      formaldehyde: {
+        name: "Formaldehyde",
+        text: `C 0.0000 0.0000 0.0000 0.450
+O 1.2080 0.0000 0.0000 -0.550
+H -0.5880 0.9490 0.0000 0.050
+H -0.5880 -0.9490 0.0000 0.050`,
+      },
+    };
+    const ELEMENT_STYLE = {
+      H: { color: 0xf8fafc, radius: 0.13, covalent: 0.31, vdw: 1.20 },
+      C: { color: 0x334155, radius: 0.20, covalent: 0.76, vdw: 1.70 },
+      N: { color: 0x2563eb, radius: 0.20, covalent: 0.71, vdw: 1.55 },
+      O: { color: 0xdc2626, radius: 0.22, covalent: 0.66, vdw: 1.52 },
+      F: { color: 0x16a34a, radius: 0.19, covalent: 0.57, vdw: 1.47 },
+      P: { color: 0xf97316, radius: 0.25, covalent: 1.07, vdw: 1.80 },
+      S: { color: 0xeab308, radius: 0.25, covalent: 1.05, vdw: 1.80 },
+      Cl: { color: 0x22c55e, radius: 0.24, covalent: 1.02, vdw: 1.75 },
+      Na: { color: 0x7c3aed, radius: 0.26, covalent: 1.66, vdw: 2.27 },
+      K: { color: 0x9333ea, radius: 0.30, covalent: 2.03, vdw: 2.75 },
+    };
+    const FALLBACK_STYLE = { color: 0x94a3b8, radius: 0.21, covalent: 0.78, vdw: 1.70 };
+    const CUBE_CORNERS = [
+      [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+      [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ];
+    const CUBE_TETS = [
+      [0, 5, 1, 6],
+      [0, 1, 2, 6],
+      [0, 2, 3, 6],
+      [0, 3, 7, 6],
+      [0, 7, 4, 6],
+      [0, 4, 5, 6],
+    ];
+    let atoms = parseMolecule(DEFAULT_MOLECULE_TEXT);
+    let viewCenter = new THREE.Vector3();
+    let viewRadius = 2.4;
+    let sliceStats = null;
+    let surfaceStats = null;
+
+    const canvas = document.getElementById("scene");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0xeef2f7, 1);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0xeef2f7, 8, 24);
+
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 80);
+    camera.position.set(3.6, 3.0, 4.2);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 0, 0);
+
+    const root = new THREE.Group();
+    scene.add(root);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xb5c2d6, 2.2));
+    const key = new THREE.DirectionalLight(0xffffff, 2.0);
+    key.position.set(4, 6, 5);
+    scene.add(key);
+
+    const grid = new THREE.GridHelper(6, 12, 0x7c8aa3, 0xcbd5e1);
+    grid.position.y = -1.35;
+    root.add(grid);
+
+    const axes = new THREE.AxesHelper(2.3);
+    root.add(axes);
+
+    const atomGroup = new THREE.Group();
+    root.add(atomGroup);
+    const labelGroup = new THREE.Group();
+    root.add(labelGroup);
+    const surfaceGroup = new THREE.Group();
+    root.add(surfaceGroup);
+
+    const sphereGeometry = new THREE.SphereGeometry(1, 48, 32);
+    let sliceMesh = null;
+    let surfaceMesh = null;
+    const state = {
+      axis: "z",
+      offset: 1.4,
+      autoRotate: true,
+      showAtoms: true,
+      showSlice: true,
+      showSurface: true,
+    };
+
+    const axisSelect = document.getElementById("axis");
+    const offsetInput = document.getElementById("offset");
+    const readout = document.getElementById("readout");
+    const maxTick = document.getElementById("maxTick");
+    const minTick = document.getElementById("minTick");
+    const colorBar = document.querySelector(".bar");
+    const status = document.getElementById("status");
+    const presetMolecule = document.getElementById("presetMolecule");
+    const moleculeInput = document.getElementById("moleculeInput");
+    const moleculeMessage = document.getElementById("moleculeMessage");
+
+    document.getElementById("reset").addEventListener("click", () => resetCamera());
+
+    document.getElementById("rotate").addEventListener("click", (event) => {
+      state.autoRotate = !state.autoRotate;
+      event.currentTarget.setAttribute("aria-pressed", state.autoRotate ? "true" : "false");
+    });
+
+    document.getElementById("atoms").addEventListener("click", (event) => {
+      state.showAtoms = !state.showAtoms;
+      atomGroup.visible = state.showAtoms;
+      labelGroup.visible = state.showAtoms;
+      event.currentTarget.setAttribute("aria-pressed", state.showAtoms ? "true" : "false");
+    });
+
+    document.getElementById("slice").addEventListener("click", (event) => {
+      state.showSlice = !state.showSlice;
+      if (sliceMesh) sliceMesh.visible = state.showSlice;
+      event.currentTarget.setAttribute("aria-pressed", state.showSlice ? "true" : "false");
+    });
+
+    document.getElementById("surface").addEventListener("click", (event) => {
+      state.showSurface = !state.showSurface;
+      surfaceGroup.visible = state.showSurface;
+      event.currentTarget.setAttribute("aria-pressed", state.showSurface ? "true" : "false");
+    });
+
+    axisSelect.addEventListener("change", () => {
+      state.axis = axisSelect.value;
+      state.offset = recommendedSliceOffset(state.axis);
+      syncOffsetRange();
+      rebuildSlice();
+    });
+
+    offsetInput.addEventListener("input", () => {
+      state.offset = Number(offsetInput.value);
+      rebuildSlice();
+    });
+
+    document.getElementById("applyMolecule").addEventListener("click", () => {
+      try {
+        applyMolecule(moleculeInput.value);
+        presetMolecule.value = "";
+        setMoleculeMessage(`Loaded ${atoms.length} atoms, total charge ${totalCharge(atoms).toFixed(3)} e.`, false);
+      } catch (error) {
+        setMoleculeMessage(error.message, true);
+      }
+    });
+
+    document.getElementById("resetMolecule").addEventListener("click", () => {
+      loadPreset("water");
+    });
+
+    presetMolecule.addEventListener("change", () => {
+      if (presetMolecule.value.length > 0) {
+        loadPreset(presetMolecule.value);
+      }
+    });
+
+    rebuildMolecule();
+    rebuildSurface();
+    rebuildSlice();
+    updateStatus();
+    resetCamera();
+    resize();
+    animate();
+    window.addEventListener("resize", resize);
+
+    function addBond(a, b) {
+      const midpoint = a.clone().add(b).multiplyScalar(0.5);
+      const direction = b.clone().sub(a);
+      const length = direction.length();
+      const geometry = new THREE.CylinderGeometry(0.045, 0.045, length, 24);
+      const material = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.55 });
+      const cylinder = new THREE.Mesh(geometry, material);
+      cylinder.position.copy(midpoint);
+      cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+      atomGroup.add(cylinder);
+    }
+
+    function makeLabel(text, position) {
+      const labelCanvas = document.createElement("canvas");
+      labelCanvas.width = 128;
+      labelCanvas.height = 64;
+      const ctx = labelCanvas.getContext("2d");
+      ctx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+      ctx.fillStyle = "rgba(255,255,255,0.86)";
+      roundRect(ctx, 28, 12, 72, 36, 8);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(17,24,39,0.22)";
+      ctx.stroke();
+      ctx.fillStyle = "#111827";
+      ctx.font = "700 24px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, 64, 31);
+      const texture = new THREE.CanvasTexture(labelCanvas);
+      const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+      const sprite = new THREE.Sprite(material);
+      sprite.position.copy(position);
+      sprite.scale.set(0.46, 0.23, 1);
+      return sprite;
+    }
+
+    function roundRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    }
+
+    function applyMolecule(source) {
+      atoms = parseMolecule(source);
+      rebuildMolecule();
+      rebuildSurface();
+      rebuildSlice();
+      updateStatus();
+      resetCamera();
+    }
+
+    function loadPreset(key) {
+      const preset = MOLECULE_PRESETS[key];
+      if (!preset) return;
+      presetMolecule.value = key;
+      moleculeInput.value = preset.text;
+      applyMolecule(preset.text);
+      setMoleculeMessage(`${preset.name}: ${atoms.length} atoms, total charge ${totalCharge(atoms).toFixed(3)} e.`, false);
+    }
+
+    function parseMolecule(source) {
+      const parsed = [];
+      const lines = source.split(/\r?\n/);
+      for (let index = 0; index < lines.length; index += 1) {
+        const raw = lines[index].replace(/#.*/, "").trim();
+        if (raw.length === 0) continue;
+        const parts = raw.split(/\s+/);
+        if (parts.length !== 5) {
+          throw new Error(`Line ${index + 1}: expected Element x y z charge.`);
+        }
+        const element = normalizeElement(parts[0]);
+        const x = Number(parts[1]);
+        const y = Number(parts[2]);
+        const z = Number(parts[3]);
+        const charge = Number(parts[4]);
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !Number.isFinite(charge)) {
+          throw new Error(`Line ${index + 1}: coordinates and charge must be finite numbers.`);
+        }
+        const style = ELEMENT_STYLE[element] ?? FALLBACK_STYLE;
+        parsed.push({
+          element,
+          charge,
+          position: new THREE.Vector3(x, y, z),
+          color: style.color,
+          radius: style.radius,
+          covalent: style.covalent,
+          vdw: style.vdw,
+        });
+      }
+      if (parsed.length === 0) {
+        throw new Error("Molecule input must contain at least one atom.");
+      }
+      return parsed;
+    }
+
+    function normalizeElement(raw) {
+      const compact = raw.trim();
+      if (!/^[A-Za-z]{1,2}$/.test(compact)) {
+        throw new Error(`Invalid element symbol: ${raw}.`);
+      }
+      return compact.charAt(0).toUpperCase() + compact.slice(1).toLowerCase();
+    }
+
+    function clearGroup(group) {
+      while (group.children.length > 0) {
+        const child = group.children.pop();
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (child.material.map) child.material.map.dispose();
+          child.material.dispose();
+        }
+      }
+    }
+
+    function rebuildMolecule() {
+      clearGroup(atomGroup);
+      clearGroup(labelGroup);
+      const bounds = moleculeBounds(atoms);
+      viewCenter.copy(bounds.center);
+      viewRadius = Math.max(2.4, bounds.radius + 1.7);
+      state.offset = recommendedSliceOffset(state.axis);
+      syncOffsetRange();
+      grid.scale.setScalar(Math.max(1, viewRadius / 3));
+      grid.position.set(viewCenter.x, viewCenter.y - Math.max(1.35, viewRadius * 0.48), viewCenter.z);
+      axes.scale.setScalar(Math.max(1, viewRadius / 2.3));
+
+      for (const atom of atoms) {
+        const material = new THREE.MeshStandardMaterial({
+          color: atom.color,
+          roughness: 0.42,
+          metalness: 0.0,
+        });
+        const sphere = new THREE.Mesh(sphereGeometry, material);
+        sphere.scale.setScalar(atom.radius);
+        sphere.position.copy(atom.position);
+        atomGroup.add(sphere);
+        labelGroup.add(makeLabel(atom.element, atom.position.clone().add(new THREE.Vector3(0.0, atom.radius + 0.16, 0.0))));
+      }
+
+      for (let i = 0; i < atoms.length; i += 1) {
+        for (let j = i + 1; j < atoms.length; j += 1) {
+          if (shouldBond(atoms[i], atoms[j])) {
+            addBond(atoms[i].position, atoms[j].position);
+          }
+        }
+      }
+      atomGroup.visible = state.showAtoms;
+      labelGroup.visible = state.showAtoms;
+    }
+
+    function shouldBond(a, b) {
+      const distance = a.position.distanceTo(b.position);
+      const limit = Math.max(0.35, (a.covalent + b.covalent) * 1.28);
+      return distance > 0.18 && distance <= limit;
+    }
+
+    function rebuildSlice() {
+      const textureCanvas = document.createElement("canvas");
+      const size = 160;
+      textureCanvas.width = size;
+      textureCanvas.height = size;
+      const ctx = textureCanvas.getContext("2d", { willReadFrequently: true });
+      const image = ctx.createImageData(size, size);
+      const values = [];
+      let min = Number.POSITIVE_INFINITY;
+      let max = Number.NEGATIVE_INFINITY;
+      let excluded = 0;
+      const extent = viewRadius;
+      const span = extent * 2;
+      const basis = planeBasis(state.axis);
+
+      for (let y = 0; y < size; y += 1) {
+        for (let x = 0; x < size; x += 1) {
+          const a = -extent + (x / (size - 1)) * span;
+          const b = -extent + (y / (size - 1)) * span;
+          const point = pointOnPlane(state.offset, basis, a, b);
+          const sample = potentialAt(point, 0.08);
+          if (sample.excluded) {
+            values.push(null);
+            excluded += 1;
+          } else {
+            values.push(sample.value);
+            min = Math.min(min, sample.value);
+            max = Math.max(max, sample.value);
+          }
+        }
+      }
+
+      if (!Number.isFinite(min) || !Number.isFinite(max)) {
+        min = -1;
+        max = 1;
+      }
+      sliceStats = { min, max, excluded };
+
+      for (let i = 0; i < values.length; i += 1) {
+        const color = values[i] === null ? [17, 24, 39, 80] : colorFor(values[i], min, max);
+        image.data[i * 4 + 0] = color[0];
+        image.data[i * 4 + 1] = color[1];
+        image.data[i * 4 + 2] = color[2];
+        image.data[i * 4 + 3] = color[3] ?? 226;
+      }
+      ctx.putImageData(image, 0, 0);
+
+      const texture = new THREE.CanvasTexture(textureCanvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0.88,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const geometry = makePlaneGeometry(state.offset, basis, extent);
+      const next = new THREE.Mesh(geometry, material);
+      next.visible = state.showSlice;
+
+      if (sliceMesh) {
+        root.remove(sliceMesh);
+        sliceMesh.geometry.dispose();
+        sliceMesh.material.map.dispose();
+        sliceMesh.material.dispose();
+      }
+      sliceMesh = next;
+      root.add(sliceMesh);
+
+      readout.textContent = `${state.axis} = ${state.offset.toFixed(2)} A`;
+      maxTick.textContent = max.toFixed(2);
+      minTick.textContent = min.toFixed(2);
+      updateColorBar(min, max);
+      updateStatus();
+    }
+
+    function rebuildSurface() {
+      if (surfaceMesh) {
+        surfaceGroup.remove(surfaceMesh);
+        surfaceMesh.geometry.dispose();
+        surfaceMesh.material.dispose();
+        surfaceMesh = null;
+      }
+
+      const bounds = moleculeBounds(atoms);
+      const gridCount = 36;
+      const padding = 0.35;
+      const extent = bounds.radius + padding;
+      const origin = new THREE.Vector3(
+        bounds.center.x - extent,
+        bounds.center.y - extent,
+        bounds.center.z - extent,
+      );
+      const step = (extent * 2) / gridCount;
+      const positions = [];
+      const values = [];
+      let min = Number.POSITIVE_INFINITY;
+      let max = Number.NEGATIVE_INFINITY;
+      for (let ix = 0; ix < gridCount; ix += 1) {
+        for (let iy = 0; iy < gridCount; iy += 1) {
+          for (let iz = 0; iz < gridCount; iz += 1) {
+            const cornerPoints = [];
+            const cornerFields = [];
+            for (const [dx, dy, dz] of CUBE_CORNERS) {
+              const point = new THREE.Vector3(
+                origin.x + (ix + dx) * step,
+                origin.y + (iy + dy) * step,
+                origin.z + (iz + dz) * step,
+              );
+              cornerPoints.push(point);
+              cornerFields.push(molecularContourField(point));
+            }
+            for (const tet of CUBE_TETS) {
+              emitTetraSurface(tet, cornerPoints, cornerFields, positions, values);
+            }
+          }
+        }
+      }
+
+      for (const value of values) {
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+      }
+      const validCount = values.length;
+
+      if (!Number.isFinite(min) || !Number.isFinite(max) || validCount === 0) {
+        min = -1;
+        max = 1;
+      }
+      surfaceStats = { min, max, count: positions.length / 9, validCount };
+
+      const colors = [];
+      for (const value of values) {
+        const color = colorFor(value, min, max);
+        colors.push(color[0] / 255, color[1] / 255, color[2] / 255);
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+      geometry.computeVertexNormals();
+      const material = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.88,
+        roughness: 0.68,
+        metalness: 0.0,
+        side: THREE.DoubleSide,
+      });
+      surfaceMesh = new THREE.Mesh(geometry, material);
+      surfaceGroup.add(surfaceMesh);
+      surfaceGroup.visible = state.showSurface;
+    }
+
+    function molecularContourField(point) {
+      let field = Number.POSITIVE_INFINITY;
+      for (const atom of atoms) {
+        field = Math.min(field, point.distanceTo(atom.position) - atom.vdw);
+      }
+      return field;
+    }
+
+    function emitTetraSurface(tet, points, fields, positions, values) {
+      const inside = tet.filter((index) => fields[index] <= 0);
+      const outside = tet.filter((index) => fields[index] > 0);
+      if (inside.length === 0 || outside.length === 0) return;
+
+      if (inside.length === 1) {
+        appendTriangle([
+          contourIntersection(inside[0], outside[0], points, fields),
+          contourIntersection(inside[0], outside[1], points, fields),
+          contourIntersection(inside[0], outside[2], points, fields),
+        ], positions, values);
+      } else if (inside.length === 3) {
+        appendTriangle([
+          contourIntersection(outside[0], inside[0], points, fields),
+          contourIntersection(outside[0], inside[2], points, fields),
+          contourIntersection(outside[0], inside[1], points, fields),
+        ], positions, values);
+      } else {
+        const a = contourIntersection(inside[0], outside[0], points, fields);
+        const b = contourIntersection(inside[0], outside[1], points, fields);
+        const c = contourIntersection(inside[1], outside[0], points, fields);
+        const d = contourIntersection(inside[1], outside[1], points, fields);
+        appendTriangle([a, c, b], positions, values);
+        appendTriangle([b, c, d], positions, values);
+      }
+    }
+
+    function contourIntersection(aIndex, bIndex, points, fields) {
+      const a = points[aIndex];
+      const b = points[bIndex];
+      const fa = fields[aIndex];
+      const fb = fields[bIndex];
+      const t = Math.abs(fa) / Math.max(Math.abs(fa) + Math.abs(fb), 1e-12);
+      return a.clone().lerp(b, t);
+    }
+
+    function appendTriangle(triangle, positions, values) {
+      const samples = [];
+      for (const point of triangle) {
+        const sample = potentialAt(point, 0.08);
+        if (sample.excluded) return;
+        samples.push(sample.value);
+      }
+      for (let i = 0; i < triangle.length; i += 1) {
+        const point = triangle[i];
+        positions.push(point.x, point.y, point.z);
+        values.push(samples[i]);
+      }
+    }
+
+    function moleculeBounds(inputAtoms) {
+      const min = new THREE.Vector3(Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
+      const max = new THREE.Vector3(Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY);
+      for (const atom of inputAtoms) {
+        min.x = Math.min(min.x, atom.position.x - atom.vdw);
+        min.y = Math.min(min.y, atom.position.y - atom.vdw);
+        min.z = Math.min(min.z, atom.position.z - atom.vdw);
+        max.x = Math.max(max.x, atom.position.x + atom.vdw);
+        max.y = Math.max(max.y, atom.position.y + atom.vdw);
+        max.z = Math.max(max.z, atom.position.z + atom.vdw);
+      }
+      const center = min.clone().add(max).multiplyScalar(0.5);
+      let radius = 0;
+      for (const atom of inputAtoms) {
+        radius = Math.max(radius, atom.position.distanceTo(center) + atom.vdw);
+      }
+      return { center, radius };
+    }
+
+    function totalCharge(inputAtoms) {
+      return inputAtoms.reduce((sum, atom) => sum + atom.charge, 0);
+    }
+
+    function setMoleculeMessage(message, isError) {
+      moleculeMessage.textContent = message;
+      moleculeMessage.classList.toggle("error", isError);
+    }
+
+    function updateStatus() {
+      if (!sliceStats || !surfaceStats) return;
+      const sliceText = sliceStats.excluded > 0
+        ? `${sliceStats.excluded} singular slice samples excluded`
+        : `slice ${sliceStats.min.toFixed(2)} to ${sliceStats.max.toFixed(2)} eV/e`;
+      const contourText = surfaceStats.validCount === 0
+        ? "no visible atom contour samples"
+        : `contour ${surfaceStats.min.toFixed(2)} to ${surfaceStats.max.toFixed(2)} eV/e, ${surfaceStats.count} triangles`;
+      status.textContent = `${atoms.length} atoms, total charge ${totalCharge(atoms).toFixed(3)} e; ${sliceText}; ${contourText}.`;
+    }
+
+    function updateColorBar(min, max) {
+      const stops = [];
+      const steps = 12;
+      for (let i = 0; i <= steps; i += 1) {
+        const t = i / steps;
+        const value = max - t * (max - min);
+        const color = colorFor(value, min, max);
+        stops.push(`rgb(${color[0]},${color[1]},${color[2]}) ${Math.round(t * 100)}%`);
+      }
+      colorBar.style.background = `linear-gradient(to bottom, ${stops.join(", ")})`;
+    }
+
+    function syncOffsetRange() {
+      const centerOffset = axisCoordinate(viewCenter, state.axis);
+      const limit = Math.max(2.5, viewRadius);
+      const min = centerOffset - limit;
+      const max = centerOffset + limit;
+      offsetInput.min = min.toFixed(2);
+      offsetInput.max = max.toFixed(2);
+      state.offset = clampNumber(state.offset, min, max);
+      offsetInput.value = state.offset.toFixed(2);
+    }
+
+    function recommendedSliceOffset(axis) {
+      const centerOffset = axisCoordinate(viewCenter, axis);
+      if (axis === "z") return centerOffset + 1.4;
+      return centerOffset;
+    }
+
+    function resetCamera() {
+      camera.position.set(
+        viewCenter.x + viewRadius * 1.25,
+        viewCenter.y + viewRadius * 1.05,
+        viewCenter.z + viewRadius * 1.45,
+      );
+      controls.target.copy(viewCenter);
+      controls.update();
+    }
+
+    function potentialAt(point, minimumDistance) {
+      let potential = 0;
+      for (const atom of atoms) {
+        const r = point.distanceTo(atom.position);
+        if (r <= minimumDistance) {
+          return { excluded: true, value: 0 };
+        }
+        potential += COULOMB_EV_ANGSTROM * atom.charge / r;
+      }
+      return { excluded: false, value: potential };
+    }
+
+    function planeBasis(axis) {
+      if (axis === "x") {
+        return {
+          axis,
+          center: viewCenter.clone(),
+          u: new THREE.Vector3(0, 1, 0),
+          v: new THREE.Vector3(0, 0, 1),
+        };
+      }
+      if (axis === "y") {
+        return {
+          axis,
+          center: viewCenter.clone(),
+          u: new THREE.Vector3(1, 0, 0),
+          v: new THREE.Vector3(0, 0, 1),
+        };
+      }
+      return {
+        axis,
+        center: viewCenter.clone(),
+        u: new THREE.Vector3(1, 0, 0),
+        v: new THREE.Vector3(0, 1, 0),
+      };
+    }
+
+    function pointOnPlane(offset, basis, a, b) {
+      const point = basis.center.clone()
+        .addScaledVector(basis.u, a)
+        .addScaledVector(basis.v, b);
+      if (basis.axis === "x") point.x = offset;
+      else if (basis.axis === "y") point.y = offset;
+      else point.z = offset;
+      return point;
+    }
+
+    function axisCoordinate(point, axis) {
+      if (axis === "x") return point.x;
+      if (axis === "y") return point.y;
+      return point.z;
+    }
+
+    function makePlaneGeometry(offset, basis, extent) {
+      const vertices = [
+        pointOnPlane(offset, basis, -extent, -extent),
+        pointOnPlane(offset, basis, extent, -extent),
+        pointOnPlane(offset, basis, extent, extent),
+        pointOnPlane(offset, basis, -extent, extent),
+      ];
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute([
+        vertices[0].x, vertices[0].y, vertices[0].z,
+        vertices[1].x, vertices[1].y, vertices[1].z,
+        vertices[2].x, vertices[2].y, vertices[2].z,
+        vertices[3].x, vertices[3].y, vertices[3].z,
+      ], 3));
+      geometry.setAttribute("uv", new THREE.Float32BufferAttribute([
+        0, 0,
+        1, 0,
+        1, 1,
+        0, 1,
+      ], 2));
+      geometry.setIndex([0, 1, 2, 0, 2, 3]);
+      geometry.computeVertexNormals();
+      return geometry;
+    }
+
+    function colorFor(value, min, max) {
+      const scale = Math.max(Math.abs(min), Math.abs(max), 1e-12);
+      const t = Math.min(1, Math.abs(value) / scale);
+      const channel = Math.round((1 - t) * 255);
+      if (value < 0) {
+        return [255, channel, channel, 226];
+      }
+      return [channel, channel, 255, 226];
+    }
+
+    function clampNumber(value, low, high) {
+      return Math.min(high, Math.max(low, value));
+    }
+
+    function resize() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (state.autoRotate) {
+        orbitCameraAroundTarget(0.0025);
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function orbitCameraAroundTarget(angle) {
+      const relative = camera.position.clone().sub(controls.target);
+      relative.applyAxisAngle(new THREE.Vector3(0, 0, 1), angle);
+      camera.position.copy(controls.target).add(relative);
+    }
+  </script>
+</body>
+</html>

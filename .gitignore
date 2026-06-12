@@ -1,0 +1,16 @@
+.DS_Store
+.idea/
+DOC-*.md
+Readme-1.md
+Ref-code/
+target/
+_build/
+.moon/
+*.wasm
+*.js
+*.c
+*.o
+*.exe
+examples/*.ppm
+examples/*.svg
+examples/*.csv
