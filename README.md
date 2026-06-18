@@ -2,7 +2,7 @@
 
 `espviz` is a MoonBit library and CLI for visualizing electrostatic-potential slices. The default workflow visualizes assigned atomic partial charges, which is useful for small molecules, teaching demos, and quick inspection of force-field or charge-fitting models without Python, NumPy, or plotting dependencies.
 
-The core also exposes a density-grid MESP API for the quantum-chemistry formula when external nuclei and electron density data are supplied. It evaluates nuclear charge minus electron-density Coulomb integral on a plane, but it does not generate electron density from molecular orbitals.
+The core also exposes a density-grid MESP API for the quantum-chemistry formula when external nuclei and electron density data are supplied. It evaluates nuclear charge minus electron-density Coulomb integral on a plane, audits element symbols against nuclear charges, and reports integrated electron counts, but it does not generate electron density from molecular orbitals.
 
 The CLI demo evaluates the classical point-charge Coulomb potential on a 2D plane and exports the grid as SVG, PPM, or CSV. The default SVG is a complete visualization with a heatmap, colorbar, numeric range, atom projections, and element labels. Red means negative potential, white is near neutral, and blue means positive potential.
 
@@ -12,7 +12,7 @@ The CLI demo evaluates the classical point-charge Coulomb potential on a 2D plan
 - Core API: assigned-charge atoms, quantum nuclei, electron-density grids, plane sampling, potential grids, CSV/PPM/SVG renderers.
 - Example: built-in water molecule demo in `cmd/main`.
 - Tests: black-box tests cover potential evaluation, neutrality, cancellation, grid validation, renderers, and diverging ESP color scales.
-- License: MIT.
+- License: Apache-2.0 license.
 
 Account-bound tasks still have to be completed by the repository owner:
 
@@ -73,7 +73,7 @@ python3 -m http.server 8080
 
 Then open `http://127.0.0.1:8080/examples/espviz_3d.html`. The page shows a 3D molecule, an interactive point-charge ESP slice plane, atom labels, a continuous van der Waals contour colored by the same point-charge ESP, a shared colorbar, orbit controls, and toggles for atoms/slice/exterior ESP/rotation. It loads Three.js from a CDN, so the browser needs network access for the first load.
 
-The 3D page also accepts a custom molecule in the editor. Use one atom per line:
+The 3D page also accepts a custom assigned-charge molecule in the editor. Use one atom per line:
 
 ```text
 Element x y z charge
@@ -83,7 +83,7 @@ H -0.610 0.940 0.000 0.28
 H -0.610 -0.940 0.000 0.27
 ```
 
-The columns are element symbol, x coordinate, y coordinate, z coordinate, and partial charge. The fourth column is the z coordinate in Angstrom; the fifth column is the charge in elementary-charge units. Blank lines and `#` comments are ignored. The frontend preserves this coordinate system, infers simple bonds from covalent radii for display, redraws the slice, and colors the continuous union of atomic van der Waals contours by the assigned-charge electrostatic potential.
+The columns are element symbol, x coordinate, y coordinate, z coordinate, and assigned partial charge. The fourth column is the z coordinate in Angstrom; the fifth column is the charge in elementary-charge units. Blank lines and `#` comments are ignored. The frontend preserves this coordinate system, infers simple bonds from covalent radii for display, redraws the slice, and colors the continuous union of atomic van der Waals contours by the assigned-charge electrostatic potential. These presets are compact, neutral demo charge models; they are not ab initio MESP data.
 
 Additional example inputs:
 
@@ -158,6 +158,16 @@ let potential = @espviz.mesp_at(
 )
 ```
 
+Before using external MESP data, run the audit helpers:
+
+```moonbit
+let electrons = @espviz.total_electrons(density_grid)
+let nuclear_charge = @espviz.total_nuclear_charge(nuclei)
+let net_charge = @espviz.net_charge_from_density(nuclei, density_grid)
+```
+
+For a neutral molecule, `net_charge` should be close to zero after accounting for grid truncation and quadrature error. A large mismatch means the density grid, unit conversion, or nuclear charges are wrong.
+
 ## Reproduce
 
 ```bash
@@ -185,13 +195,14 @@ The rigorous MESP formula is:
 V(r) = k * [ sum_A Z_A / |r - R_A| - integral rho(r') / |r - r'| dr' ]
 ```
 
-`mesp_at` evaluates the integral by direct quadrature over a supplied density grid. True surface MESP maps should use an electron-density isosurface, commonly `rho = 0.001 a.u.` or `0.002 a.u.`; the interactive 3D page currently shows a van der Waals union surface for the assigned-charge model, not that quantum-chemistry isosurface. See `docs/SCIENTIFIC_MODEL.md` for the scientific assumptions and limits.
+`mesp_at` evaluates the integral by direct quadrature over a supplied density grid. True surface MESP maps should use an electron-density isosurface, commonly `rho = 0.001 a.u.` or `0.002 a.u.`; the interactive 3D page currently shows a van der Waals union surface for the assigned-charge model, not that quantum-chemistry isosurface. See `docs/SCIENTIFIC_MODEL.md` for the scientific assumptions, input audits, and limits.
 
 ## Common Pitfalls
 
 - Do not place the sampled plane directly through atom centers unless `minimum_distance` is large enough to exclude those grid points.
 - Keep grid sizes modest for CLI use. Runtime is `O(width * height * atoms)`.
 - Use partial charges from a force field, RESP/ESP fit, Mulliken/NPA analysis, or another upstream chemistry workflow. The built-in water charges are only a demo.
+- For strict MESP, verify that each element symbol matches its nuclear charge and that the density grid integrates to the expected electron count.
 
 ## Release Checklist
 

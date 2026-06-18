@@ -12,6 +12,18 @@ fn assert_close(actual : Double, expected : Double, tolerance : Double) -> Unit 
   }
 }
 
+fn unit_density_grid(density : Double) -> @espviz.ElectronDensityGrid {
+  let densities = FixedArray::make(1, density)
+  @espviz.ElectronDensityGrid::{
+    origin: @espviz.make_vec3(0.0, 0.0, 0.0),
+    spacing: @espviz.make_vec3(1.0, 1.0, 1.0),
+    nx: 1,
+    ny: 1,
+    nz: 1,
+    densities_e_per_angstrom3: densities,
+  }
+}
+
 fn distance_for_test(a : @espviz.Vec3, b : @espviz.Vec3) -> Double {
   let dx = a.x - b.x
   let dy = a.y - b.y
@@ -51,15 +63,7 @@ test "quantum nuclear potential uses atomic number not partial charge" {
 
 test "electron density contribution is subtracted from MESP" {
   let nuclei : Array[@espviz.Nucleus] = [@espviz.make_nucleus("H", 0.0, 0.0, 0.0, 1)]
-  let densities = FixedArray::make(1, 1.0)
-  let density_grid = @espviz.ElectronDensityGrid::{
-    origin: @espviz.make_vec3(0.0, 0.0, 0.0),
-    spacing: @espviz.make_vec3(1.0, 1.0, 1.0),
-    nx: 1,
-    ny: 1,
-    nz: 1,
-    densities_e_per_angstrom3: densities,
-  }
+  let density_grid = unit_density_grid(1.0)
   let point = @espviz.make_vec3(2.0, 0.0, 0.0)
   let nuclear = @espviz.nuclear_potential_at(nuclei, point, minimum_distance=0.0)
   let electronic = @espviz.electronic_potential_from_density_grid_at(density_grid, point)
@@ -68,6 +72,35 @@ test "electron density contribution is subtracted from MESP" {
   assert_true(electronic > 0.0)
   assert_close(mesp, nuclear - electronic, 0.000000001)
   assert_close(mesp, 0.0, 0.000000001)
+}
+
+test "MESP audit checks nuclear charges and net electron count" {
+  let nuclei : Array[@espviz.Nucleus] = [
+    @espviz.make_nucleus("O", 0.0, 0.0, 0.0, 8),
+    @espviz.make_nucleus("H", 0.9572, 0.0, 0.0, 1),
+    @espviz.make_nucleus("H", -0.2400, 0.9266, 0.0, 1),
+  ]
+  let density_grid = unit_density_grid(10.0)
+  assert_eq(@espviz.atomic_number_for_element("O"), 8)
+  assert_eq(@espviz.total_nuclear_charge(nuclei), 10)
+  assert_close(@espviz.total_electrons(density_grid), 10.0, 0.000000001)
+  assert_close(@espviz.net_charge_from_density(nuclei, density_grid), 0.0, 0.000000001)
+  assert_true(@espviz.is_density_nearly_neutral(nuclei, density_grid, tolerance=0.000000001))
+}
+
+test "MESP audit rejects mismatched element and nuclear charge" {
+  let nuclei : Array[@espviz.Nucleus] = [@espviz.make_nucleus("O", 0.0, 0.0, 0.0, 6)]
+  let result : Result[Unit, Error] = Ok(@espviz.audit_nuclei(nuclei)) catch {
+    err => Err(err)
+  }
+  guard result is Err(_) else { fail("expected mismatched nuclear charge to fail") }
+}
+
+test "density grid audit rejects negative density" {
+  let result : Result[Unit, Error] = Ok(@espviz.audit_density_grid(unit_density_grid(-1.0))) catch {
+    err => Err(err)
+  }
+  guard result is Err(_) else { fail("expected negative electron density to fail") }
 }
 
 test "standard MESP density is converted from atomic units" {
@@ -96,11 +129,19 @@ test "neutral water sample" {
 
 test "opposite charges cancel at midpoint" {
   let atoms : Array[@espviz.Atom] = [
-    @espviz.make_atom("A", -1.0, 0.0, 0.0, 1.0),
-    @espviz.make_atom("B", 1.0, 0.0, 0.0, -1.0),
+    @espviz.make_atom("Na", -1.0, 0.0, 0.0, 1.0),
+    @espviz.make_atom("Cl", 1.0, 0.0, 0.0, -1.0),
   ]
   let actual = @espviz.potential_at(atoms, @espviz.make_vec3(0.0, 0.0, 0.0), minimum_distance=0.0)
   assert_close(actual, 0.0, 0.000000001)
+}
+
+test "assigned-charge audit rejects non-element symbols" {
+  let atoms : Array[@espviz.Atom] = [@espviz.make_atom("Q", 0.0, 0.0, 0.0, 1.0)]
+  let result : Result[Unit, Error] = Ok(@espviz.audit_assigned_charge_atoms(atoms)) catch {
+    err => Err(err)
+  }
+  guard result is Err(_) else { fail("expected unsupported element symbol to fail") }
 }
 
 test "singular atom sample is rejected" {
@@ -144,7 +185,7 @@ test "plane grid has expected shape and range" {
 }
 
 test "plane axes map to physical cartesian coordinates" {
-  let atoms : Array[@espviz.Atom] = [@espviz.make_atom("Q", 0.0, 0.0, 0.0, 1.0)]
+  let atoms : Array[@espviz.Atom] = [@espviz.make_atom("Na", 0.0, 0.0, 0.0, 1.0)]
   let expected_point = @espviz.make_vec3(1.0, 2.0, 3.0)
   let expected = @espviz.potential_at(atoms, expected_point, minimum_distance=0.0)
   let x_plane = @espviz.Plane::{

@@ -253,14 +253,14 @@
   <div class="topbar">
     <div class="brand">
       <strong>espviz 3D</strong>
-      <span>Classical point-charge ESP</span>
+      <span>Assigned-charge point ESP</span>
     </div>
     <div class="controls">
       <button id="reset" type="button" title="Reset view">Reset</button>
       <button id="rotate" type="button" aria-pressed="true" title="Toggle rotation">Rotate</button>
       <button id="atoms" type="button" aria-pressed="true" title="Toggle atoms">Atoms</button>
       <button id="slice" type="button" aria-pressed="true" title="Toggle potential slice">Slice</button>
-      <button id="surface" type="button" aria-pressed="true" title="Toggle van der Waals contour ESP">Exterior ESP</button>
+      <button id="surface" type="button" aria-pressed="true" title="Toggle assigned-charge ESP on the van der Waals contour">Exterior ESP</button>
       <select id="axis" title="Slice axis">
         <option value="z" selected>z plane</option>
         <option value="y">y plane</option>
@@ -280,7 +280,7 @@
     </div>
   </div>
 
-  <div id="status" class="status">Water partial charges: O -0.834, H +0.417, H +0.417. Samples inside atom singularities are excluded.</div>
+  <div id="status" class="status">Assigned-charge demo: water O -0.834, H +0.417, H +0.417. Not an ab initio MESP density surface.</div>
 
   <details class="editor">
     <summary>Custom molecule</summary>
@@ -370,6 +370,20 @@ H -0.5880 -0.9490 0.0000 0.050`,
       Na: { color: 0x7c3aed, radius: 0.26, covalent: 1.66, vdw: 2.27 },
       K: { color: 0x9333ea, radius: 0.30, covalent: 2.03, vdw: 2.75 },
     };
+    const ELEMENT_SYMBOLS = new Set([
+      "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+      "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
+      "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+      "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
+      "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
+      "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+      "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
+      "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+      "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
+      "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm",
+      "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds",
+      "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
+    ]);
     const FALLBACK_STYLE = { color: 0x94a3b8, radius: 0.21, covalent: 0.78, vdw: 1.70 };
     const CUBE_CORNERS = [
       [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
@@ -603,6 +617,9 @@ H -0.5880 -0.9490 0.0000 0.050`,
         const charge = Number(parts[4]);
         if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !Number.isFinite(charge)) {
           throw new Error(`Line ${index + 1}: coordinates and charge must be finite numbers.`);
+        }
+        if (!ELEMENT_SYMBOLS.has(element)) {
+          throw new Error(`Line ${index + 1}: unsupported element symbol ${element}.`);
         }
         const style = ELEMENT_STYLE[element] ?? FALLBACK_STYLE;
         parsed.push({

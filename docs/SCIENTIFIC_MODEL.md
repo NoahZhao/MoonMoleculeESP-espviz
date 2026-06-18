@@ -5,7 +5,7 @@
 - Assigned-charge visualization: the original classical atom-centered point-charge approximation.
 - Density-grid MESP evaluation: a post-processing API that evaluates the quantum-chemistry electrostatic-potential formula when nuclei and an external electron-density grid are supplied.
 
-It is still not a Hartree-Fock or DFT solver: it does not optimize geometries, compute orbitals, build density matrices, or fit charges.
+It is still not a Hartree-Fock or DFT solver: it does not optimize geometries, compute orbitals, build density matrices, fit charges, or derive electron densities from coordinates.
 
 ## Quantum-Chemistry Reference
 
@@ -17,7 +17,7 @@ V(r) = sum_A Z_A / |r - R_A| - integral rho(r') / |r - r'| dr'
 
 In atomic units this expression is in Hartree per unit positive charge. In Angstrom and elementary-charge units, `espviz` multiplies the Coulomb kernel by `14.3996454784255 eV Angstrom / e^2`. `rho(r')` is a positive electron number density; the minus sign is the electron charge contribution.
 
-This quantum-chemistry MEP requires nuclear charges `Z_A` and an electron density `rho`, usually from a Hartree-Fock or density-functional calculation. The MoonBit core can integrate a supplied density grid with `mesp_at` and `compute_mesp_plane`; it cannot produce that density grid from first principles.
+This quantum-chemistry MEP requires nuclear charges `Z_A` and an electron density `rho`, usually from a Hartree-Fock or density-functional calculation. The MoonBit core can integrate a supplied density grid with `mesp_at` and `compute_mesp_plane`; it cannot produce that density grid from first principles. The input audit requires each nucleus element symbol to match its integer nuclear charge, so `O` must have `Z_A = 8`, `C` must have `Z_A = 6`, and so on.
 
 ## Implemented Formulas
 
@@ -37,7 +37,7 @@ where:
 - `deltaV_g` is the density-grid cell volume in `Angstrom^3`.
 - Coordinates are Angstrom and the result is `eV/e`.
 
-This is a direct midpoint quadrature of the accepted MESP expression. Accuracy is controlled by the quality, extent, and spacing of the supplied density grid. Samples exactly on a density-grid point use a finite same-cell spherical average for that cell contribution; samples on or too close to a nucleus are rejected because the nuclear term diverges.
+This is a direct quadrature of the accepted MESP expression over the supplied density samples. Accuracy is controlled by the quality, extent, and spacing of the upstream density grid. Samples exactly on a density-grid point use a finite same-cell spherical average for that cell contribution; samples on or too close to a nucleus are rejected because the nuclear term diverges.
 
 ### Assigned point charges
 
@@ -69,11 +69,13 @@ This approximation replaces the full nuclear-plus-electronic charge distribution
 
 - Coordinates must use Angstrom consistently.
 - Charges must use elementary-charge units.
-- Nuclei for `mesp_at` must use integer atomic numbers, not partial charges.
-- Density-grid values must be non-negative electron number densities in `e / Angstrom^3`. Use `density_au_to_e_per_angstrom3` for densities stored in atomic units.
+- Nuclei for `mesp_at` must use element symbols and matching integer atomic numbers, not partial charges.
+- Density-grid values must be finite, non-negative electron number densities in `e / Angstrom^3`. Use `density_au_to_e_per_angstrom3` for densities stored in atomic units.
+- Coordinates, spacing, distances, charges, and densities must be finite numbers; `NaN` and infinities are rejected.
 - The molecule must contain at least one atom.
 - The sampled plane should not pass through atom centers unless those grid points are intentionally excluded with `minimum_distance`.
 - Neutrality is not required for an isolated finite point-charge potential, but `is_nearly_neutral` is provided because many molecular charge models are expected to be neutral.
+- For density-grid MESP, `total_electrons`, `total_nuclear_charge`, `net_charge_from_density`, and `is_density_nearly_neutral` are provided so callers can audit whether supplied density integrates to the expected electron count.
 
 ## Molecular Surface
 

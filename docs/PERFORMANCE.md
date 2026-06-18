@@ -14,7 +14,7 @@ The density-grid MESP API is also direct:
 O(width * height * (nucleus_count + density_cell_count))
 ```
 
-It is rigorous with respect to the supplied quadrature grid, but it can become expensive quickly. For production-size density grids, callers should precompute surfaces or use a specialized electrostatic-potential evaluator upstream.
+It follows the quantum-chemistry MESP formula for the supplied quadrature grid, but it can become expensive quickly. Scientific accuracy still depends on the upstream electron density, grid extent, spacing, and unit conversion. For production-size density grids, callers should precompute surfaces or use a specialized electrostatic-potential evaluator upstream.
 
 ## Accuracy Controls
 
